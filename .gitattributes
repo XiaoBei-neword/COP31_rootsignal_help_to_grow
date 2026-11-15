@@ -1,0 +1,3 @@
+# 仓库内统一按 UTF-8 存储；start.bat 检出时转回 GBK
+# 原因：cmd.exe 用系统代码页(936)解析批处理，UTF-8 的中文行会被拆坏
+start.bat -text working-tree-encoding=GBK
