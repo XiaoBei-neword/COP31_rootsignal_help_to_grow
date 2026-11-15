@@ -1,0 +1,9 @@
+.env
+__pycache__/
+*.pyc
+data/rootsignal.db
+data/.secret_key
+.venv/
+.workbuddy/
+*.log
+.DS_Store

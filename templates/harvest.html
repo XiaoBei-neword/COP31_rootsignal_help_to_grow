@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+{% block title %}收获窗口与余量调度{% endblock %}
+{% block heading %}收获窗口与余量调度{% endblock %}
+{% block subheading %}在预报里找一段不下雨的缝，把成熟作物收进来，再算清少损失了多少。{% endblock %}
+
+{% block content %}
+{% if error %}
+<section class="card">
+  <div class="empty-state">
+    <h3>无法评估收获窗口</h3>
+    <p>{{ error }}</p>
+    <a class="btn" href="{{ url_for('harvest') }}">重试</a>
+  </div>
+</section>
+{% elif not hw.available %}
+<section class="card">
+  <div class="empty-state">
+    <h3>预报窗口还没覆盖成熟期</h3>
+    <p>{{ hw.message }}</p>
+    <p class="muted">预计成熟日 {{ hw.maturity_date }}。到临近成熟前 7 天再来，系统会用当时的预报重排窗口。</p>
+    <a class="btn" href="{{ url_for('settings') }}">检查播种日期</a>
+  </div>
+</section>
+{% else %}
+
+{% if bundle.is_demo %}
+<div class="banner banner-warn">
+  <b>当前为演示数据（模拟）。</b>收获窗口基于模拟预报演示逻辑，接入真实气象 API 后自动切换。
+</div>
+{% endif %}
+
+<div class="hero-grid">
+  <section class="card window-hero">
+    <div class="card-head">
+      <div>
+        <h2>建议收获窗口</h2>
+        <p class="card-sub">{{ crop.name }} · 预计成熟 {{ hw.maturity_date|cn_date }} · 置信度 {{ hw.confidence }}</p>
+      </div>
+      <span class="tag">{{ hw.window.days }} 天可作业</span>
+    </div>
+    <div class="window-dates">
+      <div>
+        <small>最佳单日</small>
+        <b>{{ hw.best.date|cn_date }}</b>
+        <span>周{{ hw.best.date|weekday }} · {{ hw.best.text }} · {{ hw.best.tmax|round(0)|int }}℃</span>
+      </div>
+      <div class="window-arrow">→</div>
+      <div>
+        <small>窗口区间</small>
+        <b>{{ hw.window.start|cn_date }} — {{ hw.window.end|cn_date }}</b>
+        <span>窗口内降水合计 {{ hw.window_days|sum(attribute='precip')|round(1) }} mm</span>
+      </div>
+    </div>
+    <div class="window-note">
+      <b>产后风险：</b>{{ hw.loss_note }}
+    </div>
+  </section>
+
+  <section class="card loss-card">
+    <div class="card-head"><h2>可避免损失</h2><span class="tag">{{ profile.area_mu }} 亩</span></div>
+    <div class="loss-main">
+      <b>{{ surplus.saved_kg|round(0)|int }}<small>kg</small></b>
+      <span>≈ ¥{{ surplus.saved_value|round(0)|int }}</span>
+    </div>
+    <div class="loss-compare">
+      <div>
+        <span>按常规方式</span>
+        <b>{{ surplus.base_loss_pct }}% 损失</b>
+        <em>{{ surplus.base_loss_kg|round(0)|int }} kg</em>
+      </div>
+      <div class="loss-good">
+        <span>按本方案</span>
+        <b>{{ surplus.optimized_loss_pct }}% 损失</b>
+        <em>{{ surplus.optimized_loss_kg|round(0)|int }} kg</em>
+      </div>
+    </div>
+    <dl class="stat-row stat-row-3">
+      <div><dt>预计总产</dt><dd>{{ surplus.total_t }}<small>吨</small></dd></div>
+      <div><dt>亩产</dt><dd>{{ surplus.yield_per_mu|round(0)|int }}<small>kg</small></dd></div>
+      <div><dt>参考价</dt><dd>¥{{ surplus.price }}<small>/kg</small></dd></div>
+    </dl>
+  </section>
+</div>
+
+<section class="card">
+  <div class="card-head">
+    <div>
+      <h2>逐日作业适宜度</h2>
+      <p class="card-sub">评分越高越不适合收获：降水、高湿、高温、大风、过熟都会加分。</p>
+    </div>
+    <div class="legend">
+      <span><i class="sw low"></i>适宜</span>
+      <span><i class="sw medium"></i>可作业</span>
+      <span><i class="sw high"></i>不宜</span>
+    </div>
+  </div>
+  <div class="chart" id="windowChart" data-chart="window"></div>
+  <script type="application/json" id="windowData">{{ hw.candidates|tojson }}</script>
+</section>
+
+<section class="section-head">
+  <h2>余量调度方案</h2>
+  <span class="muted">三步把损失拿回来，每步带可执行数量</span>
+</section>
+<div class="action-grid">
+  {% for a in surplus.actions %}
+  <article class="card action">
+    <header><span class="step-no">{{ '%02d'|format(loop.index) }}</span><h3>{{ a.title }}</h3></header>
+    <b class="action-qty">{{ a.quantity }}</b>
+    <p>{{ a.detail }}</p>
+    <footer>预计贡献减损 <b>{{ a.saved_kg|round(0)|int }} kg</b></footer>
+  </article>
+  {% endfor %}
+</div>
+
+<div class="two-col">
+  <section class="card">
+    <div class="card-head"><h2>损失测算口径</h2></div>
+    <details class="calc" open>
+      <summary>展开 / 收起</summary>
+      <ul>
+        <li>亩产取参数表中值：{{ crop.yield_kg_per_mu[0] }}–{{ crop.yield_kg_per_mu[1] }} kg/亩 → {{ surplus.yield_per_mu|round(0)|int }} kg/亩。</li>
+        <li>总产 = 亩产 × {{ profile.area_mu }} 亩 = {{ surplus.total_kg|round(0)|int }} kg。</li>
+        <li>{{ crop.name }}常规产后损失率取 {{ surplus.base_loss_pct }}%（参数表），主要来自霉变、发芽、破碎与运输损耗。</li>
+        <li>收获后 5 天降水 {{ surplus.rain_days_after }} 天 → 优化损失率下调至 {{ surplus.optimized_loss_pct }}%。</li>
+        <li>可避免损失 = 总产 ×（常规率 − 优化率）= {{ surplus.saved_kg|round(0)|int }} kg，按 ¥{{ surplus.price }}/kg 折价。</li>
+      </ul>
+    </details>
+    <div class="basis-note">抢收比例 {{ (surplus.rush_ratio * 100)|round(0)|int }}%，依据窗口宽度（{{ hw.window.days }} 天）与收获后降水天数推算。</div>
+  </section>
+
+  <section class="card">
+    <div class="card-head"><h2>存档这份方案</h2></div>
+    <p class="muted">存下来后写入本账号记录，用于和另一个账号验证数据隔离。</p>
+    <button class="btn btn-primary" id="savePlan" data-url="{{ url_for('api_harvest_plan') }}">保存调度方案</button>
+    <div id="saveMsg" class="save-msg" hidden></div>
+
+    <div class="history-mini">
+      <h3>我的历史方案</h3>
+      {% if plans %}
+      <ul>
+        {% for p in plans %}
+        <li>
+          <b>{{ p.window_start|cn_date }} — {{ p.window_end|cn_date }}</b>
+          <span>{{ p.crop_key }} · 减损 {{ p.loss_saved_kg|round(0)|int }} kg</span>
+          <small>{{ p.created_at }}</small>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="muted">还没有保存过方案。</p>
+      {% endif %}
+    </div>
+  </section>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if hw and hw.available %}
+<script src="{{ url_for('static', filename='js/charts.js') }}"></script>
+<script>
+  const cands = JSON.parse(document.getElementById('windowData').textContent);
+  RS.chart.harvestWindow(document.getElementById('windowChart'), cands, {{ hw.best.date|tojson }});
+</script>
+<script src="{{ url_for('static', filename='js/harvest.js') }}"></script>
+{% endif %}
+{% endblock %}

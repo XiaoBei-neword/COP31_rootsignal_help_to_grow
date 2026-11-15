@@ -1,0 +1,194 @@
+{% extends "base.html" %}
+{% block title %}田间风险看板{% endblock %}
+{% block heading %}田间风险看板{% endblock %}
+{% block subheading %}把未来 7 天的气候异常翻译成风险等级，作为灌溉与收获决策的起点。{% endblock %}
+
+{% block content %}
+{% if error %}
+<section class="card">
+  <div class="empty-state">
+    <h3>拿不到气象数据</h3>
+    <p>{{ error }}</p>
+    <p class="muted">检查 .env 中的气象 API Key，或把 <code>ALLOW_DEMO_WEATHER</code> 设为 true 使用演示数据。</p>
+    <a class="btn" href="{{ url_for('dashboard') }}">重新获取</a>
+  </div>
+</section>
+{% else %}
+
+{% if bundle.is_demo %}
+<div class="banner banner-warn">
+  <b>当前为演示数据（模拟），不是真实气象。</b>
+  原因：{{ bundle.current.get('_fallback_reason', '未配置气象 API Key') }}。
+  在 <code>.env</code> 填入 <code>QWEATHER_KEY</code> 或 <code>SENIVERSE_KEY</code> 后重启即可切换为真实预报。
+</div>
+{% endif %}
+
+<div class="hero-grid">
+  <section class="card risk-hero">
+    <div class="card-head">
+      <div>
+        <h2>综合气候风险</h2>
+        <p class="card-sub">{{ crop.name }} · {{ stage.name }}{% if stage.days_to_maturity is not none %} · 距成熟 {{ stage.days_to_maturity }} 天{% endif %}</p>
+      </div>
+      <span class="tag">{{ risk.window }} 天预报窗口</span>
+    </div>
+
+    <div class="risk-body">
+      <div class="ring risk-{{ risk.css }}" style="--pct: {{ risk.score }};">
+        <div class="ring-inner">
+          <b>{{ risk.score|round(0)|int }}</b>
+          <span>{{ risk.level }}</span>
+          <em>风险指数</em>
+        </div>
+      </div>
+      <div class="risk-side">
+        {% if risk['items'] %}
+        <p class="risk-verdict">首要风险：<b>{{ risk['items'][0].title }}</b>（{{ risk['items'][0].value }}）</p>
+        <ul class="risk-brief">
+          {% for item in risk['items'][:3] %}
+          <li class="lvl-{{ item.css }}">
+            <span class="pill">{{ item.level }}</span>
+            <span>{{ item.title }}</span>
+            <b>{{ item.value }}</b>
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <p class="risk-verdict">未来 7 天未见明显气候胁迫，按常规田管执行。</p>
+        <ul class="risk-brief">
+          <li class="lvl-low"><span class="pill">低</span><span>温度与降水均在适宜区间</span></li>
+        </ul>
+        {% endif %}
+        <div class="stage-bar">
+          <div class="stage-track"><i style="width: {{ (stage.progress * 100)|round(0) }}%"></i></div>
+          <span>生育进度 {{ (stage.progress * 100)|round(0)|int }}%</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card now-card">
+    <div class="card-head">
+      <h2>此刻田间</h2>
+      <span class="tag">{{ bundle.fetched_at }}</span>
+    </div>
+    <div class="now-main">
+      <b class="now-temp">{{ bundle.current.temp|round(0)|int }}<small>℃</small></b>
+      <div class="now-desc">
+        <strong>{{ bundle.current.text or '—' }}</strong>
+        <span>体感 {{ bundle.current.feels_like|round(0)|int }}℃</span>
+      </div>
+    </div>
+    <dl class="now-grid">
+      <div><dt>相对湿度</dt><dd>{{ bundle.current.humidity|round(0)|int }}<small>%</small></dd></div>
+      <div><dt>风速</dt><dd>{{ bundle.current.wind_kmh|round(0)|int }}<small>km/h</small></dd></div>
+      <div><dt>今日降水</dt><dd>{{ bundle.current.precip|round(1) }}<small>mm</small></dd></div>
+      <div><dt>未来7天雨量</dt><dd>{{ precip_total }}<small>mm</small></dd></div>
+    </dl>
+    <div class="now-foot">
+      <span class="src-badge {% if bundle.is_demo %}demo{% endif %}">
+        {% if bundle.is_demo %}模拟{% else %}真实{% endif %} · {{ bundle.source_label }}
+      </span>
+      <span class="muted">取数于 {{ bundle.fetched_at }}</span>
+    </div>
+  </section>
+</div>
+
+<section class="card">
+  <div class="card-head">
+    <div>
+      <h2>未来 7 天风险曲线</h2>
+      <p class="card-sub">柱为逐日风险指数，线为最高/最低气温；颜色即风险等级。综合指数按最高风险项加权，因此会高于多数单日柱。</p>
+    </div>
+    <div class="legend">
+      <span><i class="sw low"></i>低</span>
+      <span><i class="sw medium"></i>中</span>
+      <span><i class="sw high"></i>高</span>
+      <span><i class="sw critical"></i>极高</span>
+    </div>
+  </div>
+  <div class="chart" id="riskChart" data-chart="risk"></div>
+  <script type="application/json" id="dailyData">{{ risk.daily|tojson }}</script>
+</section>
+
+<section class="section-head">
+  <h2>风险明细</h2>
+  <span class="muted">每条风险都标注触发数值与阈值，可复核</span>
+</section>
+{% if risk['items'] %}
+<div class="risk-cards">
+  {% for item in risk['items'] %}
+  <article class="card risk-item lvl-{{ item.css }}">
+    <header>
+      <span class="pill">{{ item.level }}</span>
+      <h3>{{ item.title }}</h3>
+      <b class="risk-value">{{ item.value }}</b>
+    </header>
+    <p class="risk-detail">{{ item.detail }}</p>
+    <footer>
+      <span>{{ item.threshold }}</span>
+      <span>触发日 {{ item.date|cn_date }}</span>
+    </footer>
+  </article>
+  {% endfor %}
+</div>
+{% else %}
+<div class="card"><p class="muted">没有触发任何风险阈值。</p></div>
+{% endif %}
+
+<div class="two-col">
+  <section class="card">
+    <div class="card-head">
+      <div>
+        <h2>水分平衡</h2>
+        <p class="card-sub">作物需水（ETc）对比有效降水（Pe），缺口就是灌溉任务的量。</p>
+      </div>
+    </div>
+    <div class="chart chart-sm" id="waterChart" data-chart="water"></div>
+    <dl class="stat-row">
+      <div><dt>7 天需水</dt><dd>{{ risk.water.etc }}<small>mm</small></dd></div>
+      <div><dt>有效降水</dt><dd>{{ risk.water.pe }}<small>mm</small></dd></div>
+      <div><dt>净缺口</dt><dd class="hl">{{ risk.water.gap }}<small>mm</small></dd></div>
+      <div><dt>连续无雨</dt><dd>{{ risk.water.dry_run }}<small>天</small></dd></div>
+    </dl>
+    <details class="calc">
+      <summary>计算口径</summary>
+      <ul>
+        <li>ET0 采用 Hargreaves-Samani 公式，由日最高/最低温与纬度天文辐射推算。</li>
+        <li>ETc = ET0 × 生育期系数（当前 {{ stage.name }} 取 {{ stage.k }}）。</li>
+        <li>有效降水：≤5 mm 全计，&gt;5 mm 按 80% 计。</li>
+        <li>净缺口 = Σ ETc − Σ Pe，负值取 0。</li>
+      </ul>
+    </details>
+  </section>
+
+  <section class="card next-card">
+    <h2>下一步：把风险变成动作</h2>
+    <p>风险指数 {{ risk.score|round(0)|int }}（{{ risk.level }}），水分缺口 {{ risk.water.gap }} mm。
+      去灌溉决策 Agent，让模型给出灌水量、时段与理由。</p>
+    <a class="btn btn-primary" href="{{ url_for('irrigation') }}">进入灌溉决策 →</a>
+    <div class="next-hint">
+      <span>数据来源</span>
+      <b>{{ bundle.source_label }}</b>
+      <span>坐标</span>
+      <b>{{ '%.3f'|format(bundle.latitude) }}, {{ '%.3f'|format(bundle.longitude) }}</b>
+      <span>时间戳</span>
+      <b>{{ bundle.fetched_at }}</b>
+      <span>预报窗口</span>
+      <b>{{ bundle.horizon_days }} 天</b>
+    </div>
+  </section>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if not error %}
+<script src="{{ url_for('static', filename='js/charts.js') }}"></script>
+<script>
+  const daily = JSON.parse(document.getElementById('dailyData').textContent);
+  RS.chart.riskTimeline(document.getElementById('riskChart'), daily);
+  RS.chart.waterBalance(document.getElementById('waterChart'), daily);
+</script>
+{% endif %}
+{% endblock %}

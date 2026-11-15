@@ -1,0 +1,175 @@
+{% extends "base.html" %}
+{% block title %}灌溉决策 Agent{% endblock %}
+{% block heading %}灌溉决策 Agent{% endblock %}
+{% block subheading %}把「未来 3 天缺多少水」交给模型判断：灌不灌、灌多少、什么时候灌。{% endblock %}
+
+{% block content %}
+{% if error %}
+<section class="card">
+  <div class="empty-state">
+    <h3>无法计算灌溉需水</h3>
+    <p>{{ error }}</p>
+    <a class="btn" href="{{ url_for('irrigation') }}">重试</a>
+  </div>
+</section>
+{% else %}
+
+<div class="agent-grid">
+  <section class="card agent-basis">
+    <div class="card-head">
+      <h2>决策依据</h2>
+      <span class="tag">{{ bundle.source_label }}</span>
+    </div>
+
+    <dl class="kv">
+      <div><dt>作物 / 生育期</dt><dd>{{ crop.name }} · {{ stage.name }}</dd></div>
+      <div><dt>地块面积</dt><dd>{{ profile.area_mu }} 亩</dd></div>
+      <div><dt>土壤质地</dt><dd>{{ {'sand':'砂质土','loam':'壤土','clay':'黏质土'}[profile.soil] }}</dd></div>
+      <div><dt>灌溉方式</dt><dd>{{ {'flood':'地面漫灌','sprinkler':'喷灌','drip':'滴灌'}[profile.irrigation_method] }}</dd></div>
+      <div><dt>距成熟</dt><dd>{{ stage.days_to_maturity if stage.days_to_maturity is not none else '—' }} 天</dd></div>
+    </dl>
+
+    <table class="mini-table">
+      <thead>
+        <tr><th>日期</th><th>最高/最低</th><th>降水</th><th>ETc</th><th>Pe</th><th>缺口</th></tr>
+      </thead>
+      <tbody>
+        {% for d in risk.daily[:3] %}
+        <tr>
+          <td>{{ d.date|cn_date }}<small>周{{ d.date|weekday }}</small></td>
+          <td>{{ d.tmax|round(0)|int }} / {{ d.tmin|round(0)|int }}℃</td>
+          <td>{{ d.precip|round(1) }}</td>
+          <td>{{ d.etc|round(1) }}</td>
+          <td>{{ d.pe|round(1) }}</td>
+          <td class="{% if d.deficit > 4 %}hl{% endif %}">{{ d.deficit|round(1) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <div class="basis-calc">
+      <div><span>3 日作物需水</span><b>{{ rule._etc3 }} mm</b></div>
+      <div><span>3 日有效降水</span><b>{{ rule._pe3 }} mm</b></div>
+      <div><span>净缺口</span><b class="hl">{{ rule._gap3 }} mm</b></div>
+      <div><span>土壤可用水上限</span><b>{{ rule._awc }} mm</b></div>
+    </div>
+
+    <div class="basis-note">
+      {% if llm_cfg.enabled %}
+      模型：<b>{{ llm_cfg.model }}</b>，将读取以上数值并结合风险明细给出建议。
+      {% else %}
+      未配置大模型 Key，本轮由<b>本地规则引擎</b>给出建议（页面会标注来源，不会冒充模型输出）。
+      {% endif %}
+    </div>
+
+    <button class="btn btn-primary btn-block" id="runAgent"
+            data-url="{{ url_for('api_irrigation') }}">
+      {% if llm_cfg.enabled %}让 Agent 生成灌溉建议{% else %}用规则引擎生成建议{% endif %}
+    </button>
+    {% if llm_cfg.enabled %}
+    <button class="btn btn-ghost btn-block" id="runRule" data-url="{{ url_for('api_irrigation') }}">
+      改用本地规则引擎（对照）
+    </button>
+    {% endif %}
+  </section>
+
+  <section class="card agent-panel" id="agentPanel">
+    <div class="agent-idle" id="agentIdle">
+      <div class="idle-art" aria-hidden="true">
+        <svg viewBox="0 0 120 120" width="112" height="112" fill="none">
+          <circle cx="60" cy="60" r="46" stroke="rgba(124,255,178,.22)" stroke-width="2" stroke-dasharray="5 6"/>
+          <path d="M60 86V46" stroke="#DFFFF0" stroke-width="3" stroke-linecap="round"/>
+          <path d="M60 62c0-11-8-19-19-19 0 12 8 19 19 19Z" fill="#00FF41" fill-opacity=".8"/>
+          <path d="M60 55c0-11 8-17 19-17 0 12-8 19-19 19Z" fill="#7CFFD0" fill-opacity=".9"/>
+          <circle cx="60" cy="35" r="5" fill="#FFC24B"/>
+        </svg>
+      </div>
+      <h3>等待生成</h3>
+      <p>点击左侧按钮，Agent 会读取未来 3 天气象、生育期系数与土壤水容量，给出可执行的灌溉方案。</p>
+      <ul class="idle-list">
+        <li>决策：灌 / 不灌 / 少量补水</li>
+        <li>水量：净灌水量、毛灌水量、每亩立方米</li>
+        <li>理由：每条带数值依据，可复核</li>
+      </ul>
+    </div>
+
+    <div class="agent-loading" id="agentLoading" hidden>
+      <div class="loader"><i></i><i></i><i></i></div>
+      <h3>Agent 正在分析</h3>
+      <ol class="loading-steps">
+        <li data-step="1">读取气象与风险明细</li>
+        <li data-step="2">计算 3 日水分平衡</li>
+        <li data-step="3">生成灌溉建议与解释</li>
+      </ol>
+    </div>
+
+    <div class="agent-result" id="agentResult" hidden></div>
+    <div class="agent-error" id="agentError" hidden></div>
+
+    {% if llm_cfg.enabled %}
+    <div class="agent-chat" id="agentChat" hidden>
+      <div class="chat-head">
+        <div>
+          <h4>继续追问</h4>
+          <p>会记住上面这条建议的上下文，可以问「为什么」，也可以换条件再问</p>
+        </div>
+        <button class="btn btn-ghost chat-reset" id="chatReset" type="button">重开对话</button>
+      </div>
+      <div class="chat-log" id="chatLog"></div>
+      <div class="chat-suggest" id="chatSuggest">
+        <button type="button" data-q="为什么是这个水量？给我讲讲判断过程。">为什么是这个水量？</button>
+        <button type="button" data-q="如果预报里那场雨没下，我该什么时候灌？">雨没下怎么办？</button>
+        <button type="button" data-q="我这块地其实是砂质土，水量和时段要改吗？">换成砂土呢？</button>
+        <button type="button" data-q="能不能改到傍晚灌？效果会差多少？">改傍晚灌？</button>
+      </div>
+      <form class="chat-form" id="chatForm" autocomplete="off"
+            data-url="{{ url_for('api_irrigation_chat') }}">
+        <input id="chatInput" type="text" maxlength="300"
+               placeholder="继续问，例如：17 号要是不下雨，什么时候灌？">
+        <button class="btn btn-primary" id="chatSend" type="submit">发送</button>
+      </form>
+    </div>
+    {% endif %}
+  </section>
+</div>
+
+<section class="section-head">
+  <h2>我的决策记录</h2>
+  <span class="muted">仅本账号可见 · 最近 5 条</span>
+</section>
+{% if records %}
+<div class="record-list">
+  {% for rec in records %}
+  <article class="card record">
+    <header>
+      <span class="src-tag {% if rec.row.source == 'llm' %}llm{% else %}rule{% endif %}">
+        {{ '大模型' if rec.row.source == 'llm' else '规则引擎' }}
+      </span>
+      <b>{{ rec.data.decision or rec.row.decision }}</b>
+      <span class="muted">{{ rec.row.created_at }}</span>
+    </header>
+    <p>
+      {{ rec.data.net_mm or rec.row.net_mm }} mm 净灌水 ·
+      {{ rec.data.m3_per_mu or '—' }} m³/亩 ·
+      {{ rec.data.timing or '—' }}
+    </p>
+    {% if rec.data.reasons %}
+    <details><summary>查看理由</summary>
+      <ul>{% for r in rec.data.reasons %}<li>{{ r }}</li>{% endfor %}</ul>
+    </details>
+    {% endif %}
+  </article>
+  {% endfor %}
+</div>
+{% else %}
+<div class="card"><p class="muted">还没有记录。生成一次建议后会出现在这里，且只有你能看到。</p></div>
+{% endif %}
+
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if not error %}
+<script src="{{ url_for('static', filename='js/agent.js') }}"></script>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+{% block title %}地块与账号{% endblock %}
+{% block heading %}地块与账号{% endblock %}
+{% block subheading %}系统只按这里的信息取数与计算：位置决定气象，作物决定阈值，面积决定调度量。{% endblock %}
+
+{% block content %}
+{% if request.args.get('first') %}
+<div class="banner banner-info">
+  <b>还差一步。</b>填好地块位置，看板才有真实数据可算。
+</div>
+{% endif %}
+
+<form method="post" class="settings-grid">
+  <section class="card">
+    <div class="card-head">
+      <div>
+        <h2>地块位置</h2>
+        <p class="card-sub">用于向气象接口取数，精确到区县即可。</p>
+      </div>
+      <span class="tag">{{ weather_cfg.label }}</span>
+    </div>
+
+    <label class="field">
+      <span>搜索地名</span>
+      <div class="search-line">
+        <input type="text" id="geoInput" placeholder="例如：荆州、周口、潍坊" autocomplete="off">
+        <button type="button" class="btn btn-ghost" id="geoBtn">搜索</button>
+      </div>
+    </label>
+    <div id="geoResults" class="geo-results" hidden></div>
+
+    <div class="form-row">
+      <label class="field">
+        <span>地块名称</span>
+        <input type="text" name="location_name" id="locName"
+               value="{{ profile.location_name or '' }}" placeholder="例如：东湾三号田">
+      </label>
+      <label class="field">
+        <span>面积（亩）</span>
+        <input type="number" name="area_mu" step="0.1" min="0.1"
+               value="{{ profile.area_mu }}" required>
+      </label>
+    </div>
+
+    <div class="form-row">
+      <label class="field">
+        <span>纬度</span>
+        <input type="number" name="latitude" id="lat" step="0.0001"
+               value="{{ profile.latitude if profile.latitude is not none else '' }}" placeholder="30.3350">
+      </label>
+      <label class="field">
+        <span>经度</span>
+        <input type="number" name="longitude" id="lon" step="0.0001"
+               value="{{ profile.longitude if profile.longitude is not none else '' }}" placeholder="112.2390">
+      </label>
+    </div>
+    <p class="hint">搜索不到也可直接填经纬度，或用浏览器地图取点。</p>
+  </section>
+
+  <section class="card">
+    <div class="card-head">
+      <div>
+        <h2>作物与生育期</h2>
+        <p class="card-sub">切换作物后，风险阈值、需水量、损失率全部随之变化。</p>
+      </div>
+    </div>
+
+    <div class="crop-picker">
+      {% for c in crops %}
+      <label class="crop-chip">
+        <input type="radio" name="crop_key" value="{{ c.key }}"
+               {% if profile.crop_key == c.key %}checked{% endif %}>
+        <span>
+          <b>{{ c.name }}</b>
+          <small>{{ c.alias }}</small>
+        </span>
+      </label>
+      {% endfor %}
+    </div>
+
+    <div class="form-row">
+      <label class="field">
+        <span>播种日期</span>
+        <input type="date" name="planting_date"
+               value="{{ profile.planting_date or '' }}" max="{{ today }}">
+      </label>
+      <label class="field">
+        <span>土壤质地</span>
+        <select name="soil">
+          {% for key, label in soils.items() %}
+          <option value="{{ key }}" {% if profile.soil == key %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+    </div>
+
+    <label class="field">
+      <span>灌溉方式</span>
+      <select name="irrigation_method">
+        {% for key, label in methods.items() %}
+        <option value="{{ key }}" {% if profile.irrigation_method == key %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+
+    <div class="param-preview" id="paramPreview">
+      <h3>当前作物参数</h3>
+      <dl>
+        <div><dt>全生育期</dt><dd data-p="growth_days">{{ crop.growth_days }} 天</dd></div>
+        <div><dt>高温阈值</dt><dd data-p="heat_threshold">{{ crop.heat_threshold }} ℃</dd></div>
+        <div><dt>低温阈值</dt><dd data-p="cold_threshold">{{ crop.cold_threshold }} ℃</dd></div>
+        <div><dt>暴雨阈值</dt><dd data-p="flood_threshold">{{ crop.flood_threshold }} mm/日</dd></div>
+        <div><dt>亩产区间</dt><dd data-p="yield">{{ crop.yield_kg_per_mu[0] }}–{{ crop.yield_kg_per_mu[1] }} kg</dd></div>
+        <div><dt>常规产后损失</dt><dd data-p="loss">{{ crop.postharvest_loss }}%</dd></div>
+      </dl>
+      <p class="hint">参数表位于 <code>data/crops.json</code>，可按当地农技站口径修改。</p>
+    </div>
+  </section>
+
+  <div class="settings-actions">
+    <button class="btn btn-primary" type="submit">保存并进入看板</button>
+    <a class="btn btn-ghost" href="{{ url_for('dashboard') }}">取消</a>
+  </div>
+</form>
+
+<section class="section-head">
+  <h2>账号与数据隔离</h2>
+  <span class="muted">用于现场验证：两个账号互不可见</span>
+</section>
+<div class="two-col">
+  <section class="card">
+    <div class="card-head"><h2>当前账号</h2></div>
+    <dl class="kv">
+      <div><dt>账号</dt><dd>{{ user.username }}</dd></div>
+      <div><dt>注册时间</dt><dd>{{ user.created_at }}</dd></div>
+      <div><dt>用户 ID</dt><dd>#{{ user.id }}</dd></div>
+      <div><dt>数据范围</dt><dd>地块档案 {{ 1 if profile else 0 }} 份 · 灌溉记录 / 收获方案按账号过滤</dd></div>
+    </dl>
+    <p class="hint">所有查询都在 SQL 层带上 user_id，A 账号无法读到 B 账号的地块与记录。</p>
+  </section>
+  <section class="card">
+    <div class="card-head"><h2>配置状态</h2></div>
+    <dl class="kv">
+      <div><dt>气象数据源</dt>
+        <dd>{{ weather_cfg.label }}{% if weather_cfg.provider == 'demo' %}<span class="pill pill-warn">演示</span>{% endif %}</dd></div>
+      <div><dt>大模型</dt>
+        <dd>{% if llm_cfg.enabled %}{{ llm_cfg.model }}{% else %}未配置<span class="pill pill-warn">规则兜底</span>{% endif %}</dd></div>
+      <div><dt>接口地址</dt><dd class="mono">{{ llm_cfg.base_url or '—' }}</dd></div>
+    </dl>
+    <p class="hint">密钥只从环境变量 / <code>.env</code> 读取，源码中不含任何 Key。</p>
+  </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/settings.js') }}"></script>
+{% endblock %}

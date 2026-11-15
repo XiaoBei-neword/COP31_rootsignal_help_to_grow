@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}{{ code }}{% endblock %}
+{% block heading %}{{ code }}{% endblock %}
+{% block subheading %}请求没能完成{% endblock %}
+
+{% block content %}
+<section class="card error-card">
+  <div class="empty-state">
+    <h3>{{ message }}</h3>
+    <p class="muted">如果是接口报错，终端里会有完整堆栈。</p>
+    <a class="btn btn-primary" href="{{ url_for('index') }}">回到首页</a>
+  </div>
+</section>
+{% endblock %}
+
+{% block auth_content %}
+<div class="auth-shell auth-shell-single">
+  <div class="auth-main">
+    <div class="auth-card error-card">
+      <h1>{{ code }}</h1>
+      <p class="auth-sub">{{ message }}</p>
+      <a class="btn btn-primary btn-block" href="{{ url_for('index') }}">回到首页</a>
+    </div>
+  </div>
+</div>
+{% endblock %}

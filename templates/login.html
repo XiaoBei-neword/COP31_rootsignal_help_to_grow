@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}登录{% endblock %}
+{% block body_class %}auth{% endblock %}
+
+{% block auth_content %}
+<div class="auth-shell">
+  <section class="auth-aside">
+    <div class="auth-brand">
+      <svg viewBox="0 0 32 32" width="40" height="40" fill="none">
+        <path d="M16 29V12" stroke="#DFFFF0" stroke-width="2.2" stroke-linecap="round"/>
+        <path d="M16 17C16 11 11 6 5 6c0 7 5 11 11 11Z" fill="#00FF41"/>
+        <path d="M16 13c0-6 5-9 11-9 0 7-5 11-11 11Z" fill="#7CFFD0"/>
+        <path d="M9 29h14" stroke="#DFFFF0" stroke-width="2.2" stroke-linecap="round"/>
+      </svg>
+      <div>
+        <strong>根脉</strong>
+        <em>ROOT SIGNAL</em>
+      </div>
+    </div>
+    <h2>让每一场雨、<br>每一次高温，<br>都变成可执行的决策。</h2>
+    <p class="auth-lead">
+      把气象预报翻译成灌溉动作，把收获窗口排进天气缝隙，
+      把产后损失压到最低——一条给小农户的完整闭环。
+    </p>
+    <ul class="auth-flow">
+      <li><i>01</i>田间风险看板 · 气候异常量化打分</li>
+      <li><i>02</i>灌溉决策 Agent · 大模型给出量与时段</li>
+      <li><i>03</i>收获窗口 · 按预报排出可作业日</li>
+      <li><i>04</i>余量调度 · 折算可避免的损失</li>
+    </ul>
+  </section>
+
+  <section class="auth-main">
+    <div class="auth-card">
+      <h1>农户登录</h1>
+      <p class="auth-sub">每个账号的地块与决策记录互相隔离。</p>
+      {% if error %}<div class="flash flash-error">{{ error }}</div>{% endif %}
+      <form method="post" class="form">
+        <label class="field">
+          <span>账号</span>
+          <input type="text" name="username" value="{{ username or '' }}" autocomplete="username"
+                 placeholder="例如 demo_a" required autofocus>
+        </label>
+        <label class="field">
+          <span>密码</span>
+          <input type="password" name="password" autocomplete="current-password"
+                 placeholder="至少 6 位" required>
+        </label>
+        <button class="btn btn-primary btn-block" type="submit">进入看板</button>
+      </form>
+      <p class="auth-switch">还没有账号？<a href="{{ url_for('register') }}">注册一个地块</a></p>
+      <div class="auth-tip">
+        演示账号（运行 <code>python seed_demo.py</code> 后可用）：
+        <b>demo_a / demo1234</b>、<b>demo_b / demo1234</b>
+      </div>
+    </div>
+  </section>
+</div>
+{% endblock %}

@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#001222">
+  <title>{% block title %}田间风险看板{% endblock %} · 根脉 RootSignal</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>🌱</text></svg>">
+</head>
+<body class="{% block body_class %}app{% endblock %}">
+{% if user %}
+<div class="shell">
+  <aside class="sidebar">
+    <a class="brand" href="{{ url_for('dashboard') }}">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 32 32" width="34" height="34" fill="none">
+          <path d="M16 29V12" stroke="#DFFFF0" stroke-width="2.2" stroke-linecap="round"/>
+          <path d="M16 17C16 11 11 6 5 6c0 7 5 11 11 11Z" fill="#00FF41" fill-opacity=".82"/>
+          <path d="M16 13c0-6 5-9 11-9 0 7-5 11-11 11Z" fill="#7CFFD0" fill-opacity=".9"/>
+          <path d="M9 29h14" stroke="#00FF41" stroke-width="2.2" stroke-linecap="round"/>
+        </svg>
+      </span>
+      <span class="brand-text">
+        <strong>根脉</strong>
+        <em>ROOT SIGNAL</em>
+      </span>
+    </a>
+
+    <nav class="nav">
+      {% for item in nav %}
+      <a href="{{ url_for(item.endpoint) }}" class="nav-item {% if active == item.endpoint %}is-active{% endif %}">
+        <span class="nav-step">{{ item.step }}</span>
+        <span class="nav-body">
+          <span class="nav-label">{{ item.label }}</span>
+          <span class="nav-hint">{{ item.hint }}</span>
+        </span>
+      </a>
+      {% endfor %}
+    </nav>
+
+    <div class="sidebar-foot">
+      <div class="source-line {% if weather_cfg.provider == 'demo' %}is-demo{% endif %}">
+        <span class="dot {% if weather_cfg.keyed %}ok{% else %}warn{% endif %}"></span>
+        <div>
+          <b>{{ weather_cfg.label }}</b>
+          <small>{% if weather_cfg.keyed %}实时 API{% elif weather_cfg.provider == 'demo' %}未接入真实气象{% else %}免密钥数据源{% endif %}</small>
+        </div>
+      </div>
+      <div class="source-line">
+        <span class="dot {% if llm_cfg.enabled %}ok{% else %}warn{% endif %}"></span>
+        <div>
+          <b>{{ llm_cfg.model if llm_cfg.enabled else '规则引擎' }}</b>
+          <small>{% if llm_cfg.enabled %}大模型已接入{% else %}未配置 LLM_API_KEY{% endif %}</small>
+        </div>
+      </div>
+      <div class="account">
+        <span class="avatar">{{ user.username[0]|upper }}</span>
+        <div class="account-body">
+          <b>{{ user.username }}</b>
+          <small>数据仅本账号可见</small>
+        </div>
+        <form method="post" action="{{ url_for('logout') }}">
+          <button class="link-btn" type="submit">退出</button>
+        </form>
+      </div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <div>
+        <h1>{% block heading %}田间风险看板{% endblock %}</h1>
+        <p class="sub">{% block subheading %}{% endblock %}</p>
+      </div>
+      <div class="topbar-meta">
+        <div class="meta-chip">
+          <small>地块</small>
+          <b>{{ profile.location_name or '未设置' }}</b>
+        </div>
+        <div class="meta-chip">
+          <small>作物</small>
+          <b>{{ crop.name }}</b>
+        </div>
+      </div>
+    </header>
+
+    <div class="loopbar" aria-label="闭环流程">
+      {% set steps = [('dashboard','气候异常','01'), ('irrigation','灌溉决策','02'), ('harvest','收获窗口','03'), ('harvest','减少产后损失','04')] %}
+      {% set ns = namespace(marked=false) %}
+      {% for ep, label, no in steps %}
+      {% set is_cur = (active == ep and not ns.marked) %}
+      {% if is_cur %}{% set ns.marked = true %}{% endif %}
+      <span class="loop-step {% if is_cur %}is-current{% endif %}">
+        <i>{{ no }}</i>{{ label }}
+      </span>
+      {% if not loop.last %}<span class="loop-arrow">→</span>{% endif %}
+      {% endfor %}
+    </div>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+      <div class="flashes">
+        {% for cat, msg in messages %}
+        <div class="flash flash-{{ cat }}">{{ msg }}</div>
+        {% endfor %}
+      </div>
+      {% endif %}
+    {% endwith %}
+
+    {% block content %}{% endblock %}
+
+    <footer class="foot">
+      根脉 RootSignal · 本地演示版 · 数据口径与来源见各模块说明
+    </footer>
+  </main>
+</div>
+{% else %}
+  {% block auth_content %}{% endblock %}
+{% endif %}
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

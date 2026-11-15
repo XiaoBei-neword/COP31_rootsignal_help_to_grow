@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}注册{% endblock %}
+{% block body_class %}auth{% endblock %}
+
+{% block auth_content %}
+<div class="auth-shell">
+  <section class="auth-aside">
+    <div class="auth-brand">
+      <svg viewBox="0 0 32 32" width="40" height="40" fill="none">
+        <path d="M16 29V12" stroke="#DFFFF0" stroke-width="2.2" stroke-linecap="round"/>
+        <path d="M16 17C16 11 11 6 5 6c0 7 5 11 11 11Z" fill="#00FF41"/>
+        <path d="M16 13c0-6 5-9 11-9 0 7-5 11-11 11Z" fill="#7CFFD0"/>
+        <path d="M9 29h14" stroke="#DFFFF0" stroke-width="2.2" stroke-linecap="round"/>
+      </svg>
+      <div>
+        <strong>根脉</strong>
+        <em>ROOT SIGNAL</em>
+      </div>
+    </div>
+    <h2>一个账号，<br>一块地，<br>一套自己的决策记录。</h2>
+    <p class="auth-lead">
+      注册只需要账号和密码。地块位置、作物、面积在下一步补齐，
+      系统据此取数、算风险、排窗口。
+    </p>
+    <div class="auth-note">
+      多账号数据完全隔离：A 农户看不到 B 农户的地块与记录。
+    </div>
+  </section>
+
+  <section class="auth-main">
+    <div class="auth-card">
+      <h1>创建账号</h1>
+      <p class="auth-sub">不收集手机号、不接入第三方登录。</p>
+      {% if error %}<div class="flash flash-error">{{ error }}</div>{% endif %}
+      <form method="post" class="form">
+        <label class="field">
+          <span>账号</span>
+          <input type="text" name="username" value="{{ username or '' }}" autocomplete="username"
+                 placeholder="2–20 个字符" required autofocus>
+        </label>
+        <label class="field">
+          <span>密码</span>
+          <input type="password" name="password" autocomplete="new-password"
+                 placeholder="至少 6 位" required>
+        </label>
+        <label class="field">
+          <span>确认密码</span>
+          <input type="password" name="confirm" autocomplete="new-password" placeholder="再输一次" required>
+        </label>
+        <button class="btn btn-primary btn-block" type="submit">创建并设置地块</button>
+      </form>
+      <p class="auth-switch">已有账号？<a href="{{ url_for('login') }}">直接登录</a></p>
+    </div>
+  </section>
+</div>
+{% endblock %}
